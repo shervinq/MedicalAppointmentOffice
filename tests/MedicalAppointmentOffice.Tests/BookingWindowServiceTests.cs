@@ -7,7 +7,7 @@ namespace MedicalAppointmentOffice.Tests;
 public sealed class BookingWindowServiceTests
 {
     private readonly BookingWindowService _service = new(
-        Options.Create(new BookingOptions
+        Microsoft.Extensions.Options.Options.Create(new BookingOptions
         {
             EntryWindowStart = "14:00",
             EntryWindowEnd = "14:30"

@@ -50,7 +50,7 @@ public sealed class AppointmentSlotServiceTests : IAsyncLifetime
 
     private AppointmentSlotService CreateService(DateTimeOffset now)
     {
-        var options = Options.Create(new BookingOptions
+        var options = Microsoft.Extensions.Options.Options.Create(new BookingOptions
         {
             SlotMinutes = 15,
             SearchDays = 7,
