@@ -1,5 +1,6 @@
 using MedicalAppointmentOffice.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace MedicalAppointmentOffice.Data;
 
@@ -66,5 +67,32 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 
         modelBuilder.Entity<BotSession>().HasKey(x => x.BaleUserId);
         modelBuilder.Entity<ProcessedUpdate>().HasKey(x => x.UpdateId);
+
+        ConfigureDateTimeOffsetsForSqlite(modelBuilder);
+    }
+
+    private static void ConfigureDateTimeOffsetsForSqlite(ModelBuilder modelBuilder)
+    {
+        var converter = new ValueConverter<DateTimeOffset, long>(
+            value => value.ToUnixTimeMilliseconds(),
+            value => DateTimeOffset.FromUnixTimeMilliseconds(value));
+        var nullableConverter = new ValueConverter<DateTimeOffset?, long?>(
+            value => value.HasValue ? value.Value.ToUnixTimeMilliseconds() : null,
+            value => value.HasValue ? DateTimeOffset.FromUnixTimeMilliseconds(value.Value) : null);
+
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.GetProperties())
+            {
+                if (property.ClrType == typeof(DateTimeOffset))
+                {
+                    property.SetValueConverter(converter);
+                }
+                else if (property.ClrType == typeof(DateTimeOffset?))
+                {
+                    property.SetValueConverter(nullableConverter);
+                }
+            }
+        }
     }
 }
