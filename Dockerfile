@@ -10,7 +10,7 @@ COPY . .
 RUN dotnet test MedicalAppointmentOffice.sln -c Release --no-restore
 RUN dotnet publish src/MedicalAppointmentOffice/MedicalAppointmentOffice.csproj -c Release --no-restore -o /app/publish /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
