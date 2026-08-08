@@ -17,8 +17,7 @@ public sealed class ConversationService(
     IOptions<BookingOptions> bookingOptions,
     IOptions<BaleOptions> baleOptions,
     IClock clock,
-    TehranTime tehranTime,
-    ILogger<ConversationService> logger)
+    TehranTime tehranTime)
 {
     private readonly BookingOptions _booking = bookingOptions.Value;
     private readonly BaleOptions _bale = baleOptions.Value;
@@ -72,7 +71,7 @@ public sealed class ConversationService(
             await baleClient.SendMessageAsync(
                 chatId,
                 "فرایند فعلی لغو شد.",
-                BaleKeyboards.Main(isAdmin),
+                BaleKeyboards.MainMenu(isAdmin),
                 cancellationToken);
             return;
         }
@@ -177,7 +176,7 @@ public sealed class ConversationService(
             await baleClient.SendMessageAsync(
                 chatId,
                 $"شما یک نوبت فعال دارید:\n{BuildAppointmentStatus(existing)}",
-                BaleKeyboards.Main(IsAdmin(userId)),
+                BaleKeyboards.MainMenu(IsAdmin(userId)),
                 cancellationToken);
             return;
         }
@@ -204,7 +203,7 @@ public sealed class ConversationService(
             await baleClient.SendMessageAsync(
                 chatId,
                 $"⏰ ثبت درخواست فقط هر روز از ساعت {bookingWindow.WindowLabel} باز است.\nنوبت بعدی بازشدن: {PersianFormatting.DateTime(next, tehranTime)}",
-                BaleKeyboards.Main(IsAdmin(userId)),
+                BaleKeyboards.MainMenu(IsAdmin(userId)),
                 cancellationToken);
             return;
         }
@@ -384,7 +383,7 @@ public sealed class ConversationService(
             await baleClient.SendMessageAsync(
                 session.ChatId,
                 $"مهلت تکمیل فرم تمام شد. ثبت جدید فردا در بازه {bookingWindow.WindowLabel} امکان‌پذیر است.",
-                BaleKeyboards.Main(IsAdmin(session.BaleUserId)),
+                BaleKeyboards.MainMenu(IsAdmin(session.BaleUserId)),
                 cancellationToken);
             return;
         }
@@ -419,7 +418,7 @@ public sealed class ConversationService(
         var text = appointment is null
             ? "هنوز نوبتی برای شما ثبت نشده است."
             : BuildAppointmentStatus(appointment);
-        await baleClient.SendMessageAsync(chatId, text, BaleKeyboards.Main(IsAdmin(userId)), cancellationToken);
+        await baleClient.SendMessageAsync(chatId, text, BaleKeyboards.MainMenu(IsAdmin(userId)), cancellationToken);
     }
 
     private async Task<bool> TryHandleAdminCommandAsync(
@@ -538,7 +537,9 @@ public sealed class ConversationService(
 
         var day = (DayOfWeek)dayNumber;
         var isClosed = text is "تعطیل" or "بسته";
-        if (!isClosed && !InputValidators.TryParseClockRange(text, out var start, out var end))
+        var start = 0;
+        var end = 0;
+        if (!isClosed && !InputValidators.TryParseClockRange(text, out start, out end))
         {
             await baleClient.SendMessageAsync(session.ChatId, "فرمت صحیح نیست؛ نمونه: 17:00-01:00 یا «تعطیل».", cancellationToken: cancellationToken);
             return;
@@ -831,7 +832,7 @@ public sealed class ConversationService(
         await baleClient.SendMessageAsync(
             chatId,
             $"به {_booking.OfficeName} خوش آمدید 🌿\n\nثبت درخواست هر روز فقط بین ساعت {bookingWindow.WindowLabel} انجام می‌شود. پس از تکمیل مشخصات و پرداخت {PersianFormatting.Money(_booking.PriceRials)}، اولین زمان ۱۵ دقیقه‌ای خالی برای شما قطعی می‌شود.",
-            BaleKeyboards.Main(isAdmin),
+            BaleKeyboards.MainMenu(isAdmin),
             cancellationToken);
     }
 
@@ -840,7 +841,7 @@ public sealed class ConversationService(
         await baleClient.SendMessageAsync(
             chatId,
             "راهنما\n\n۱) در بازه ۱۴:۰۰ تا ۱۴:۳۰ «دریافت نوبت» را بزنید.\n۲) مشخصات بیمار و بیمه را کامل کنید.\n۳) صورتحساب کیف پول بله را بپردازید.\n۴) ساعت و کد پیگیری همان لحظه ارسال می‌شود.\n\nاطلاعات پزشکی شما فقط برای ارائه خدمت مطب نگهداری می‌شود. برای لغو یا بازپرداخت با مطب تماس بگیرید.",
-            BaleKeyboards.Main(isAdmin),
+            BaleKeyboards.MainMenu(isAdmin),
             cancellationToken);
     }
 

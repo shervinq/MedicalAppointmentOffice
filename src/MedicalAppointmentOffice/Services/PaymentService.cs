@@ -160,7 +160,7 @@ public sealed class PaymentService(
         await baleClient.SendMessageAsync(
             message.Chat.Id,
             BuildConfirmation(appointment),
-            BaleKeyboards.Main(_baleOptions.AdminUserIds.Contains(userId)),
+            BaleKeyboards.MainMenu(_baleOptions.AdminUserIds.Contains(userId)),
             cancellationToken);
     }
 

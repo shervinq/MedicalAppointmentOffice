@@ -2,7 +2,7 @@ namespace MedicalAppointmentOffice.Bale;
 
 public static class BaleKeyboards
 {
-    public static ReplyKeyboard Main(bool isAdmin)
+    public static ReplyKeyboard MainMenu(bool isAdmin)
     {
         var rows = new List<IReadOnlyList<KeyboardButton>>
         {

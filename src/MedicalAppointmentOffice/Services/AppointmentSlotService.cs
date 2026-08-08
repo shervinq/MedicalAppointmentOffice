@@ -61,11 +61,12 @@ public sealed class AppointmentSlotService(
                 .AsNoTracking()
                 .Where(x => x.LocalDate >= DateOnly.FromDateTime(tehranTime.ToLocal(now).DateTime))
                 .ToDictionaryAsync(x => x.LocalDate, cancellationToken);
-            var occupied = await db.Reservations
+            var occupiedValues = await db.Reservations
                 .AsNoTracking()
                 .Where(x => x.IsConfirmed || x.ExpiresAtUtc > now)
                 .Select(x => x.StartUtc)
-                .ToHashSetAsync(cancellationToken);
+                .ToListAsync(cancellationToken);
+            var occupied = occupiedValues.ToHashSet();
 
             foreach (var slot in EnumerateCandidates(now, schedules, exceptions))
             {
