@@ -1,4 +1,4 @@
-using Medical.Data.Sqlite;
+using Microsoft.Data.Sqlite;
 using MedicalAppointmentOffice.Data;
 using MedicalAppointmentOffice.Domain;
 using MedicalAppointmentOffice.Options;
