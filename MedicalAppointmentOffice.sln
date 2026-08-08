@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MedicalAppointmentOffice", "src\MedicalAppointmentOffice\MedicalAppointmentOffice.csproj", "{DA6ADDB2-3C3C-4FE4-847C-CF46E6018A61}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MedicalAppointmentOffice.Tests", "tests\MedicalAppointmentOffice.Tests\MedicalAppointmentOffice.Tests.csproj", "{DF9278F7-D1CC-4F17-BEB1-B1FF48BB00F0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DA6ADDB2-3C3C-4FE4-847C-CF46E6018A61}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DA6ADDB2-3C3C-4FE4-847C-CF46E6018A61}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DA6ADDB2-3C3C-4FE4-847C-CF46E6018A61}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DA6ADDB2-3C3C-4FE4-847C-CF46E6018A61}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DF9278F7-D1CC-4F17-BEB1-B1FF48BB00F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DF9278F7-D1CC-4F17-BEB1-B1FF48BB00F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DF9278F7-D1CC-4F17-BEB1-B1FF48BB00F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DF9278F7-D1CC-4F17-BEB1-B1FF48BB00F0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
