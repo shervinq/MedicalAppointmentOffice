@@ -16,6 +16,7 @@ public sealed record ReservedSlot(DateTimeOffset StartUtc, DateTimeOffset EndUtc
 
 public sealed class AppointmentSlotService(
     IDbContextFactory<AppDbContext> contextFactory,
+    ClinicSettingsService settingsService,
     IOptions<BookingOptions> options,
     IClock clock,
     TehranTime tehranTime,
@@ -37,6 +38,8 @@ public sealed class AppointmentSlotService(
                 cancellationToken);
 
             var now = clock.UtcNow;
+            var runtimeSettings = await settingsService.GetAsync(cancellationToken);
+            var slotMinutes = Math.Clamp(runtimeSettings.SlotMinutes, 5, 240);
             var appointment = await db.Appointments
                 .Include(x => x.Reservation)
                 .SingleAsync(x => x.Id == appointmentId, cancellationToken);
@@ -61,16 +64,15 @@ public sealed class AppointmentSlotService(
                 .AsNoTracking()
                 .Where(x => x.LocalDate >= DateOnly.FromDateTime(tehranTime.ToLocal(now).DateTime))
                 .ToDictionaryAsync(x => x.LocalDate, cancellationToken);
-            var occupiedValues = await db.Reservations
+            var occupied = await db.Reservations
                 .AsNoTracking()
                 .Where(x => x.IsConfirmed || x.ExpiresAtUtc > now)
-                .Select(x => x.StartUtc)
+                .Select(x => new ReservedSlot(x.StartUtc, x.EndUtc))
                 .ToListAsync(cancellationToken);
-            var occupied = occupiedValues.ToHashSet();
 
-            foreach (var slot in EnumerateCandidates(now, schedules, exceptions))
+            foreach (var slot in EnumerateCandidates(now, schedules, exceptions, slotMinutes))
             {
-                if (occupied.Contains(slot.StartUtc))
+                if (occupied.Any(x => Overlaps(slot, x)))
                 {
                     continue;
                 }
@@ -95,7 +97,7 @@ public sealed class AppointmentSlotService(
                     logger.LogWarning(exception, "Slot {StartUtc} was claimed concurrently; trying the next slot.", slot.StartUtc);
                     db.Entry(reservation).State = EntityState.Detached;
                     appointment.Reservation = null;
-                    occupied.Add(slot.StartUtc);
+                    occupied.Add(slot);
                 }
             }
 
@@ -138,7 +140,8 @@ public sealed class AppointmentSlotService(
     private IEnumerable<ReservedSlot> EnumerateCandidates(
         DateTimeOffset utcNow,
         IReadOnlyDictionary<DayOfWeek, WeeklySchedule> schedules,
-        IReadOnlyDictionary<DateOnly, ScheduleException> exceptions)
+        IReadOnlyDictionary<DateOnly, ScheduleException> exceptions,
+        int slotMinutes)
     {
         var localNow = tehranTime.ToLocal(utcNow);
         var firstDate = DateOnly.FromDateTime(localNow.DateTime);
@@ -148,10 +151,7 @@ public sealed class AppointmentSlotService(
         {
             var date = firstDate.AddDays(offset);
             var day = date.DayOfWeek;
-            if (!schedules.TryGetValue(day, out var schedule))
-            {
-                continue;
-            }
+            if (!schedules.TryGetValue(day, out var schedule)) continue;
 
             var enabled = schedule.IsEnabled;
             var startMinute = schedule.StartMinute;
@@ -159,27 +159,20 @@ public sealed class AppointmentSlotService(
 
             if (exceptions.TryGetValue(date, out var exception))
             {
-                if (exception.IsClosed)
-                {
-                    continue;
-                }
-
+                if (exception.IsClosed) continue;
                 enabled = exception.StartMinute.HasValue && exception.EndMinute.HasValue;
                 startMinute = exception.StartMinute ?? startMinute;
                 endMinute = exception.EndMinute ?? endMinute;
             }
 
-            if (!enabled)
-            {
-                continue;
-            }
+            if (!enabled) continue;
 
             var adjustedEnd = endMinute <= startMinute ? endMinute + 1440 : endMinute;
-            for (var minute = startMinute; minute + _options.SlotMinutes <= adjustedEnd; minute += _options.SlotMinutes)
+            for (var minute = startMinute; minute + slotMinutes <= adjustedEnd; minute += slotMinutes)
             {
                 var startDate = minute < 1440 ? date : date.AddDays(1);
                 var start = tehranTime.ToUtc(startDate, minute % 1440);
-                var end = start.AddMinutes(_options.SlotMinutes);
+                var end = start.AddMinutes(slotMinutes);
                 if (start >= notBefore)
                 {
                     yield return new ReservedSlot(start, end);
@@ -187,4 +180,7 @@ public sealed class AppointmentSlotService(
             }
         }
     }
+
+    private static bool Overlaps(ReservedSlot left, ReservedSlot right) =>
+        left.StartUtc < right.EndUtc && right.StartUtc < left.EndUtc;
 }
