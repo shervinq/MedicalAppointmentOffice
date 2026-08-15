@@ -11,6 +11,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AppointmentReservation> Reservations => Set<AppointmentReservation>();
     public DbSet<WeeklySchedule> WeeklySchedules => Set<WeeklySchedule>();
     public DbSet<ScheduleException> ScheduleExceptions => Set<ScheduleException>();
+    public DbSet<ClinicSettings> ClinicSettings => Set<ClinicSettings>();
     public DbSet<BotSession> BotSessions => Set<BotSession>();
     public DbSet<ProcessedUpdate> ProcessedUpdates => Set<ProcessedUpdate>();
 
@@ -38,6 +39,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             entity.Property(x => x.ProviderTrackingCode).HasMaxLength(128);
             entity.Property(x => x.Complaint).HasMaxLength(500);
             entity.Property(x => x.CancellationReason).HasMaxLength(300);
+            entity.Ignore(x => x.EffectiveTotalPriceRials);
+            entity.Ignore(x => x.RemainingRials);
             entity.HasOne(x => x.PatientProfile)
                 .WithMany(x => x.Appointments)
                 .HasForeignKey(x => x.PatientProfileId)
@@ -54,20 +57,20 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<WeeklySchedule>(entity =>
-        {
-            entity.HasIndex(x => x.DayOfWeek).IsUnique();
-        });
-
+        modelBuilder.Entity<WeeklySchedule>(entity => entity.HasIndex(x => x.DayOfWeek).IsUnique());
         modelBuilder.Entity<ScheduleException>(entity =>
         {
             entity.HasIndex(x => x.LocalDate).IsUnique();
             entity.Property(x => x.Note).HasMaxLength(200);
         });
+        modelBuilder.Entity<ClinicSettings>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.LastBookingReportLocalDate).HasMaxLength(10);
+        });
 
         modelBuilder.Entity<BotSession>().HasKey(x => x.BaleUserId);
         modelBuilder.Entity<ProcessedUpdate>().HasKey(x => x.UpdateId);
-
         ConfigureDateTimeOffsetsForSqlite(modelBuilder);
     }
 
@@ -84,14 +87,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             foreach (var property in entityType.GetProperties())
             {
-                if (property.ClrType == typeof(DateTimeOffset))
-                {
-                    property.SetValueConverter(converter);
-                }
-                else if (property.ClrType == typeof(DateTimeOffset?))
-                {
-                    property.SetValueConverter(nullableConverter);
-                }
+                if (property.ClrType == typeof(DateTimeOffset)) property.SetValueConverter(converter);
+                else if (property.ClrType == typeof(DateTimeOffset?)) property.SetValueConverter(nullableConverter);
             }
         }
     }
