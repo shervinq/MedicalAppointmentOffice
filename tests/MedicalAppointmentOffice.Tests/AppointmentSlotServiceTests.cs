@@ -5,7 +5,6 @@ using MedicalAppointmentOffice.Options;
 using MedicalAppointmentOffice.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace MedicalAppointmentOffice.Tests;
 
@@ -17,17 +16,22 @@ public sealed class AppointmentSlotServiceTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _connection.OpenAsync();
-        _dbOptions = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(_connection)
-            .Options;
+        _dbOptions = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options;
         await using var db = new AppDbContext(_dbOptions);
         await db.Database.EnsureCreatedAsync();
+        db.ClinicSettings.Add(new ClinicSettings
+        {
+            Id = 1,
+            SlotMinutes = 15,
+            TotalPriceRials = 5_000_000,
+            PaymentMode = PaymentMode.Full,
+            DepositRials = 1_000_000,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync();
     }
 
-    public async Task DisposeAsync()
-    {
-        await _connection.DisposeAsync();
-    }
+    public async Task DisposeAsync() => await _connection.DisposeAsync();
 
     [Fact]
     public async Task FirstAvailableSlotIsReservedAndNeverDuplicated()
@@ -48,19 +52,45 @@ public sealed class AppointmentSlotServiceTests : IAsyncLifetime
         Assert.Equal("17:15", TimeZoneInfo.ConvertTime(second.StartUtc, new TehranTime("Asia/Tehran").TimeZone).ToString("HH:mm"));
     }
 
+    [Fact]
+    public async Task UpdatedDurationIsAppliedToNewReservations()
+    {
+        await using (var db = new AppDbContext(_dbOptions))
+        {
+            var settings = await db.ClinicSettings.SingleAsync();
+            settings.SlotMinutes = 30;
+            await db.SaveChangesAsync();
+        }
+
+        var appointment1 = await SeedAppointmentAsync(2001);
+        var appointment2 = await SeedAppointmentAsync(2002);
+        var service = CreateService(new DateTimeOffset(2026, 8, 8, 8, 30, 0, TimeSpan.Zero));
+
+        var first = await service.ReserveEarliestAsync(appointment1);
+        var second = await service.ReserveEarliestAsync(appointment2);
+
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        Assert.Equal(TimeSpan.FromMinutes(30), first.EndUtc - first.StartUtc);
+        Assert.Equal("17:00", TimeZoneInfo.ConvertTime(first.StartUtc, new TehranTime("Asia/Tehran").TimeZone).ToString("HH:mm"));
+        Assert.Equal("17:30", TimeZoneInfo.ConvertTime(second.StartUtc, new TehranTime("Asia/Tehran").TimeZone).ToString("HH:mm"));
+    }
+
     private AppointmentSlotService CreateService(DateTimeOffset now)
     {
+        var factory = new TestDbContextFactory(_dbOptions);
+        var fakeClock = new FakeClock(now);
         var options = Microsoft.Extensions.Options.Options.Create(new BookingOptions
         {
-            SlotMinutes = 15,
             SearchDays = 7,
             MinimumLeadMinutes = 60,
             ReservationMinutes = 15
         });
         return new AppointmentSlotService(
-            new TestDbContextFactory(_dbOptions),
+            factory,
+            new ClinicSettingsService(factory, fakeClock),
             options,
-            new FakeClock(now),
+            fakeClock,
             new TehranTime("Asia/Tehran"),
             new ReservationGate(),
             NullLogger<AppointmentSlotService>.Instance);
@@ -71,14 +101,13 @@ public sealed class AppointmentSlotServiceTests : IAsyncLifetime
         await using var db = new AppDbContext(_dbOptions);
         if (!await db.WeeklySchedules.AnyAsync())
         {
-            db.WeeklySchedules.AddRange(
-                Enum.GetValues<DayOfWeek>().Select(day => new WeeklySchedule
-                {
-                    DayOfWeek = day,
-                    IsEnabled = day == DayOfWeek.Saturday,
-                    StartMinute = 17 * 60,
-                    EndMinute = 18 * 60
-                }));
+            db.WeeklySchedules.AddRange(Enum.GetValues<DayOfWeek>().Select(day => new WeeklySchedule
+            {
+                DayOfWeek = day,
+                IsEnabled = day == DayOfWeek.Saturday,
+                StartMinute = 17 * 60,
+                EndMinute = 19 * 60
+            }));
         }
 
         var patient = new PatientProfile
@@ -94,6 +123,7 @@ public sealed class AppointmentSlotServiceTests : IAsyncLifetime
             PatientProfile = patient,
             InvoicePayload = $"appointment:{Guid.NewGuid():N}",
             AmountRials = 5_000_000,
+            TotalPriceRials = 5_000_000,
             Status = AppointmentStatus.AwaitingPayment,
             CreatedAtUtc = DateTimeOffset.UtcNow
         };
@@ -102,8 +132,7 @@ public sealed class AppointmentSlotServiceTests : IAsyncLifetime
         return appointment.Id;
     }
 
-    private sealed class TestDbContextFactory(DbContextOptions<AppDbContext> options)
-        : IDbContextFactory<AppDbContext>
+    private sealed class TestDbContextFactory(DbContextOptions<AppDbContext> options) : IDbContextFactory<AppDbContext>
     {
         public AppDbContext CreateDbContext() => new(options);
     }
