@@ -23,6 +23,7 @@ builder.Services.AddSingleton(serviceProvider =>
 });
 builder.Services.AddSingleton<BookingWindowService>();
 builder.Services.AddSingleton<ReservationGate>();
+builder.Services.AddScoped<ClinicSettingsService>();
 builder.Services.AddScoped<AppointmentSlotService>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<ConversationService>();
