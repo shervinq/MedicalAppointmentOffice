@@ -10,6 +10,12 @@ public enum AppointmentStatus
     Expired = 5
 }
 
+public enum PaymentMode
+{
+    Full = 0,
+    Deposit = 1
+}
+
 public enum ConversationState
 {
     Idle = 0,
@@ -23,7 +29,11 @@ public enum ConversationState
     AwaitingConfirmation = 8,
     AwaitingScheduleDay = 20,
     AwaitingScheduleRange = 21,
-    AwaitingClosedDate = 22
+    AwaitingClosedDate = 22,
+    AwaitingSlotMinutes = 30,
+    AwaitingTotalPrice = 31,
+    AwaitingPaymentMode = 32,
+    AwaitingDepositAmount = 33
 }
 
 public sealed class PatientProfile
@@ -50,6 +60,8 @@ public sealed class Appointment
     public string Complaint { get; set; } = string.Empty;
     public AppointmentStatus Status { get; set; } = AppointmentStatus.Draft;
     public long AmountRials { get; set; }
+    public long TotalPriceRials { get; set; }
+    public bool IsDepositPayment { get; set; }
     public string InvoicePayload { get; set; } = string.Empty;
     public string? TrackingCode { get; set; }
     public string? BaleTransactionId { get; set; }
@@ -62,6 +74,9 @@ public sealed class Appointment
     public bool Reminder24HoursSent { get; set; }
     public bool Reminder2HoursSent { get; set; }
     public AppointmentReservation? Reservation { get; set; }
+
+    public long EffectiveTotalPriceRials => TotalPriceRials > 0 ? TotalPriceRials : AmountRials;
+    public long RemainingRials => Math.Max(0, EffectiveTotalPriceRials - AmountRials);
 }
 
 public sealed class AppointmentReservation
@@ -92,6 +107,17 @@ public sealed class ScheduleException
     public int? StartMinute { get; set; }
     public int? EndMinute { get; set; }
     public string? Note { get; set; }
+}
+
+public sealed class ClinicSettings
+{
+    public int Id { get; set; } = 1;
+    public int SlotMinutes { get; set; } = 15;
+    public long TotalPriceRials { get; set; } = 5_000_000;
+    public PaymentMode PaymentMode { get; set; } = PaymentMode.Full;
+    public long DepositRials { get; set; } = 1_000_000;
+    public string? LastBookingReportLocalDate { get; set; }
+    public DateTimeOffset UpdatedAtUtc { get; set; }
 }
 
 public sealed class BotSession
