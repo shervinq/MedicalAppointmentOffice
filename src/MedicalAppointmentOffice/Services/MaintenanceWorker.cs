@@ -1,7 +1,10 @@
+using System.Globalization;
 using MedicalAppointmentOffice.Bale;
 using MedicalAppointmentOffice.Data;
 using MedicalAppointmentOffice.Domain;
+using MedicalAppointmentOffice.Options;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace MedicalAppointmentOffice.Services;
 
@@ -14,23 +17,10 @@ public sealed class MaintenanceWorker(
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
         while (!stoppingToken.IsCancellationRequested)
         {
-            try
-            {
-                await RunOnceAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception exception)
-            {
-                logger.LogError(exception, "Background appointment maintenance failed.");
-            }
-
-            if (!await timer.WaitForNextTickAsync(stoppingToken))
-            {
-                break;
-            }
+            try { await RunOnceAsync(stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (Exception exception) { logger.LogError(exception, "Background appointment maintenance failed."); }
+            if (!await timer.WaitForNextTickAsync(stoppingToken)) break;
         }
     }
 
@@ -39,26 +29,23 @@ public sealed class MaintenanceWorker(
         await using var scope = scopeFactory.CreateAsyncScope();
         var slotService = scope.ServiceProvider.GetRequiredService<AppointmentSlotService>();
         var expiredCount = await slotService.ExpirePendingReservationsAsync(cancellationToken);
-        if (expiredCount > 0)
-        {
-            logger.LogInformation("Released {Count} expired appointment reservations.", expiredCount);
-        }
+        if (expiredCount > 0) logger.LogInformation("Released {Count} expired appointment reservations.", expiredCount);
 
         var contextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
         var baleClient = scope.ServiceProvider.GetRequiredService<BaleClient>();
         var clock = scope.ServiceProvider.GetRequiredService<IClock>();
         var tehranTime = scope.ServiceProvider.GetRequiredService<TehranTime>();
+        var baleOptions = scope.ServiceProvider.GetRequiredService<IOptions<BaleOptions>>().Value;
+        var bookingOptions = scope.ServiceProvider.GetRequiredService<IOptions<BookingOptions>>().Value;
+        var conversation = scope.ServiceProvider.GetRequiredService<ConversationService>();
         var now = clock.UtcNow;
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
         var upcoming = await db.Appointments
             .Include(x => x.PatientProfile)
             .Include(x => x.Reservation)
-            .Where(x => x.Status == AppointmentStatus.Confirmed &&
-                        x.Reservation != null &&
-                        x.Reservation.StartUtc > now &&
-                        ((!x.Reminder24HoursSent && x.Reservation.StartUtc <= now.AddHours(24)) ||
-                         (!x.Reminder2HoursSent && x.Reservation.StartUtc <= now.AddHours(2))))
+            .Where(x => x.Status == AppointmentStatus.Confirmed && x.Reservation != null && x.Reservation.StartUtc > now &&
+                        ((!x.Reminder24HoursSent && x.Reservation.StartUtc <= now.AddHours(24)) || (!x.Reminder2HoursSent && x.Reservation.StartUtc <= now.AddHours(2))))
             .ToListAsync(cancellationToken);
 
         foreach (var appointment in upcoming)
@@ -72,23 +59,30 @@ public sealed class MaintenanceWorker(
                     appointment.PatientProfile.ChatId,
                     $"⏰ یادآوری نوبت\n\n{label} تا نوبت شما باقی مانده است.\nزمان: {PersianFormatting.DateTime(reservation.StartUtc, tehranTime)}\nکد پیگیری: {appointment.TrackingCode}",
                     cancellationToken: cancellationToken);
-
-                if (isTwoHourReminder)
-                {
-                    appointment.Reminder2HoursSent = true;
-                    appointment.Reminder24HoursSent = true;
-                }
-                else
-                {
-                    appointment.Reminder24HoursSent = true;
-                }
+                if (isTwoHourReminder) { appointment.Reminder2HoursSent = true; appointment.Reminder24HoursSent = true; }
+                else appointment.Reminder24HoursSent = true;
             }
-            catch (Exception exception)
-            {
-                logger.LogWarning(exception, "Could not send reminder for appointment {AppointmentId}.", appointment.Id);
-            }
+            catch (Exception exception) { logger.LogWarning(exception, "Could not send reminder for appointment {AppointmentId}.", appointment.Id); }
         }
-
         await db.SaveChangesAsync(cancellationToken);
+
+        var localNow = tehranTime.ToLocal(now);
+        var localDate = DateOnly.FromDateTime(localNow.DateTime);
+        var localDateKey = localDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var currentTime = TimeOnly.FromDateTime(localNow.DateTime);
+        var reportAfter = TimeOnly.ParseExact(bookingOptions.EntryWindowEnd, "HH:mm", CultureInfo.InvariantCulture);
+        var settings = await db.ClinicSettings.SingleAsync(x => x.Id == 1, cancellationToken);
+
+        if (currentTime >= reportAfter && settings.LastBookingReportLocalDate != localDateKey)
+        {
+            foreach (var adminId in baleOptions.AdminUserIds)
+            {
+                try { await conversation.ShowBookingReportAsync(adminId, localDate, cancellationToken); }
+                catch (Exception exception) { logger.LogWarning(exception, "Could not send daily booking report to admin {AdminId}.", adminId); }
+            }
+            settings.LastBookingReportLocalDate = localDateKey;
+            settings.UpdatedAtUtc = now;
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 }
